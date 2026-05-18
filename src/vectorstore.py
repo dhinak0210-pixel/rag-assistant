@@ -1,128 +1,95 @@
-import os
 import chromadb
-from chromadb.config import Settings
-from dotenv import load_dotenv
-from src.embeddings import embed_documents, embed_query
+import os
+from .embeddings import EmbeddingModel
 
-load_dotenv()
+class VectorStore:
+    def __init__(self, path="./chroma_db"):
+        os.makedirs(path, exist_ok=True)
+        self.client = chromadb.PersistentClient(path=path)
+        self.collection = self.client.get_or_create_collection(name="rag_docs")
+        self.embedding_model = EmbeddingModel()
+        print(f"Storage location: {path}")
 
-CHROMA_PATH = os.getenv("CHROMA_PATH", "./chroma_db")
-COLLECTION_NAME = os.getenv("COLLECTION_NAME", "rag_documents")
-
-_client = None
-_collection = None
-
-def get_chroma_client():
-    global _client, _collection
-    if _client is None:
-        try:
-            os.makedirs(CHROMA_PATH, exist_ok=True)
-            _client = chromadb.PersistentClient(path=CHROMA_PATH, settings=Settings(anonymized_telemetry=False))
-            _collection = _client.get_or_create_collection(name=COLLECTION_NAME)
-        except Exception as e:
-            print(f"Error initializing ChromaDB: {e}")
-    return _collection
-
-def store_documents(chunks):
-    """
-    Stores chunks in ChromaDB. Automatically creates embeddings.
-    """
-    if not chunks:
-        print("No chunks to store.")
-        return
+    def store(self, chunks: list):
+        self.clear()
         
-    try:
-        collection = get_chroma_client()
-        if collection is None:
-            return
+        ids = []
+        documents = []
+        embeddings = []
+        metadatas = []
+        
+        print("Generating embeddings for chunks...")
+        texts = [c["content"] for c in chunks]
+        vectors = self.embedding_model.embed_texts(texts)
+        
+        for i, chunk in enumerate(chunks):
+            ids.append(chunk["chunk_id"])
+            documents.append(chunk["content"])
+            embeddings.append(vectors[i].tolist())
+            metadatas.append({
+                "source": chunk["source"],
+                "filename": chunk["filename"],
+                "page": str(chunk.get("page", "1"))
+            })
             
-        texts = [chunk['content'] for chunk in chunks]
-        ids = [chunk['chunk_id'] for chunk in chunks]
-        metadatas = [{
-            "source": chunk.get('source', ''),
-            "filename": chunk.get('filename', ''),
-            "page": chunk.get('page', 1),
-            "chunk_num": chunk.get('chunk_num', 1)
-        } for chunk in chunks]
-        
-        # We manually embed to have control and show progress
-        embeddings = embed_documents(texts).tolist()
-        
-        # Batch add to chroma to avoid size limits
-        batch_size = 100
+        batch_size = 50
+        total_stored = 0
         for i in range(0, len(ids), batch_size):
-            end_idx = min(i + batch_size, len(ids))
-            collection.add(
-                ids=ids[i:end_idx],
-                embeddings=embeddings[i:end_idx],
-                metadatas=metadatas[i:end_idx],
-                documents=texts[i:end_idx]
+            self.collection.add(
+                ids=ids[i:i+batch_size],
+                embeddings=embeddings[i:i+batch_size],
+                documents=documents[i:i+batch_size],
+                metadatas=metadatas[i:i+batch_size]
             )
-            print(f"Stored chunks {i} to {end_idx} out of {len(ids)}")
+            total_stored += len(ids[i:i+batch_size])
+            print(f"Stored {total_stored}/{len(ids)} chunks...")
             
-        print(f"Successfully stored {len(chunks)} chunks in ChromaDB.")
-    except Exception as e:
-        print(f"Error storing documents in ChromaDB: {e}")
+        return total_stored
 
-def search(query, top_k=5):
-    """
-    Searches ChromaDB for similar chunks.
-    """
-    results_out = []
-    try:
-        collection = get_chroma_client()
-        if collection is None:
-            return results_out
+    def search(self, query: str, top_k=5):
+        if self.collection.count() == 0:
+            return []
             
-        query_embedding = embed_query(query).tolist()
-        
-        results = collection.query(
-            query_embeddings=[query_embedding],
+        q_emb = self.embedding_model.embed_query(query).tolist()
+        results = self.collection.query(
+            query_embeddings=[q_emb],
             n_results=top_k
         )
         
-        if results and results['documents'] and results['documents'][0]:
+        formatted_results = []
+        if results['documents'] and len(results['documents']) > 0:
             for i in range(len(results['documents'][0])):
-                results_out.append({
+                meta = results['metadatas'][0][i] if results['metadatas'] else {}
+                dist = results['distances'][0][i] if results['distances'] else 0.0
+                formatted_results.append({
                     "content": results['documents'][0][i],
-                    "score": 1.0 - results['distances'][0][i] if 'distances' in results and results['distances'] else 0.0,
-                    "source": results['metadatas'][0][i].get('source', ''),
-                    "filename": results['metadatas'][0][i].get('filename', ''),
-                    "page": results['metadatas'][0][i].get('page', 1)
+                    "source": meta.get("source", ""),
+                    "filename": meta.get("filename", ""),
+                    "page": meta.get("page", "1"),
+                    "score": 1.0 / (1.0 + dist)
                 })
-    except Exception as e:
-        print(f"Error searching ChromaDB: {e}")
-        
-    return results_out
+        return formatted_results
 
-def get_stats():
-    """Returns database stats."""
-    try:
-        collection = get_chroma_client()
-        if collection:
-            count = collection.count()
-            return {"status": "ok", "total_chunks": count}
-    except Exception as e:
-        print(f"Error getting ChromaDB stats: {e}")
-    return {"status": "error", "total_chunks": 0}
+    def get_stats(self):
+        count = self.collection.count()
+        return {"total": count, "ready": count > 0}
 
-def clear():
-    """Deletes all documents from the collection."""
-    try:
-        global _client, _collection
-        if _client is None:
-            _client = chromadb.PersistentClient(path=CHROMA_PATH, settings=Settings(anonymized_telemetry=False))
+    def clear(self):
         try:
-            _client.delete_collection(name=COLLECTION_NAME)
-        except Exception:
-            pass # Ignore if doesn't exist
-        _client = None
-        _collection = None
-        print("ChromaDB collection cleared successfully.")
-    except Exception as e:
-        print(f"Error clearing ChromaDB: {e}")
+            self.client.delete_collection("rag_docs")
+            self.collection = self.client.create_collection("rag_docs")
+        except:
+            pass
 
 if __name__ == "__main__":
-    print("Testing vectorstore.py")
-    stats = get_stats()
-    print(f"Current stats: {stats}")
+    vs = VectorStore()
+    sample_chunks = [{
+        "chunk_id": "test_1",
+        "content": "This is test content for the vector store.",
+        "source": "test.txt",
+        "filename": "test.txt",
+        "page": 1
+    }]
+    vs.store(sample_chunks)
+    res = vs.search("test")
+    print(res)

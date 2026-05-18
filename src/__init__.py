@@ -1,1 +1,1 @@
-"""Source package for RAG application."""
+# src module

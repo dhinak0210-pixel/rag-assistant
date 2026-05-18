@@ -1,67 +1,38 @@
-import os
 from sentence_transformers import SentenceTransformer
-from dotenv import load_dotenv
+import numpy as np
 
-load_dotenv()
+class EmbeddingModel:
+    def __init__(self):
+        print("Loading FREE local embedding model...")
+        self.model = SentenceTransformer("all-MiniLM-L6-v2")
+        self.dimension = 384
+        print(f"Dimension size: {self.dimension}")
 
-# Uses FREE local model: all-MiniLM-L6-v2
-MODEL_NAME = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
-
-_model = None
-
-def get_model():
-    """Lazy load the sentence transformer model."""
-    global _model
-    if _model is None:
-        try:
-            print(f"Loading embedding model: {MODEL_NAME}...")
-            # Downloads automatically on first run
-            _model = SentenceTransformer(MODEL_NAME)
-            print(f"Model loaded successfully. Dimension: {_model.get_sentence_embedding_dimension()}")
-        except Exception as e:
-            print(f"Error loading embedding model: {e}")
-            raise
-    return _model
-
-def embed_documents(texts, batch_size=32):
-    """
-    Embeds a list of texts into a numpy array.
-    Uses batch processing and normalization.
-    """
-    try:
-        model = get_model()
-        print(f"Embedding {len(texts)} documents in batches of {batch_size}...")
-        embeddings = model.encode(
+    def embed_texts(self, texts: list):
+        embeddings = self.model.encode(
             texts, 
-            batch_size=batch_size, 
-            show_progress_bar=True,
-            normalize_embeddings=True
+            normalize_embeddings=True,
+            batch_size=32,
+            show_progress_bar=True
         )
-        return embeddings
-    except Exception as e:
-        print(f"Error embedding documents: {e}")
-        return []
+        return np.array(embeddings, dtype=np.float32)
 
-def embed_query(query):
-    """
-    Embeds a single query string.
-    """
-    try:
-        model = get_model()
-        embedding = model.encode(
-            query,
+    def embed_query(self, query: str):
+        embedding = self.model.encode(
+            query, 
             normalize_embeddings=True
         )
-        return embedding
-    except Exception as e:
-        print(f"Error embedding query: {e}")
-        return None
+        return np.array(embedding, dtype=np.float32)
 
 if __name__ == "__main__":
-    print("Testing embeddings.py")
-    test_docs = ["This is a test document.", "Another test string."]
-    embeddings = embed_documents(test_docs)
-    print(f"Generated embeddings shape: {embeddings.shape if hasattr(embeddings, 'shape') else 'N/A'}")
+    em = EmbeddingModel()
+    texts = ["I love AI", "Machine learning is great", "Apples are tasty"]
+    query = "Tell me about artificial intelligence"
     
-    q_emb = embed_query("Test query")
-    print(f"Query embedding length: {len(q_emb) if q_emb is not None else 'N/A'}")
+    doc_embs = em.embed_texts(texts)
+    q_emb = em.embed_query(query)
+    
+    similarities = np.dot(doc_embs, q_emb)
+    best_idx = np.argmax(similarities)
+    print(f"Query: {query}")
+    print(f"Most similar text: {texts[best_idx]} (Score: {similarities[best_idx]:.4f})")
