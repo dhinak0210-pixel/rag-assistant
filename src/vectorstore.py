@@ -81,6 +81,29 @@ class VectorStore:
         except:
             pass
 
+_vector_store = None
+
+def get_vector_store():
+    global _vector_store
+    if _vector_store is None:
+        _vector_store = VectorStore()
+    return _vector_store
+
+def clear():
+    get_vector_store().clear()
+
+def store_documents(chunks):
+    return get_vector_store().store(chunks)
+
+def search(query, top_k=5):
+    return get_vector_store().search(query, top_k)
+
+def get_stats():
+    return get_vector_store().get_stats()
+
+def get_chroma_client():
+    return get_vector_store().collection
+
 if __name__ == "__main__":
     vs = VectorStore()
     sample_chunks = [{

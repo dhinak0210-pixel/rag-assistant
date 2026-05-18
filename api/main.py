@@ -5,6 +5,9 @@ from pydantic import BaseModel
 import uvicorn
 import os
 import shutil
+from dotenv import load_dotenv
+
+load_dotenv(override=True)
 
 from src.rag_chain import RAGChain
 from src.guardrails import InputGuardrail, OutputGuardrail

@@ -127,7 +127,7 @@ with st.sidebar:
     
     st.subheader("⚙️ Settings")
     model_choice = st.selectbox("Model", [
-        "llama-3.1-70b-versatile",
+        "llama-3.3-70b-versatile",
         "llama-3.1-8b-instant",
         "mixtral-8x7b-32768"
     ])
@@ -206,11 +206,11 @@ if prompt := st.chat_input("Ask anything..."):
         placeholder = st.empty()
         
         with st.spinner("🔍 Searching..."):
-            sources = rag.vector_store.search(prompt, top_k=top_k)
+            sources = rag.retriever.retrieve(prompt, top_k=top_k)
             
         full_response = ""
         start_time = time.time()
-        for token in rag.ask_stream(prompt):
+        for token in rag.ask_stream(prompt, top_k=top_k):
             full_response += token
             placeholder.markdown(full_response + "▌")
             

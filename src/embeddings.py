@@ -1,10 +1,18 @@
 from sentence_transformers import SentenceTransformer
 import numpy as np
 
+_model_instance = None
+
+def get_model():
+    global _model_instance
+    if _model_instance is None:
+        print("Loading FREE local embedding model...")
+        _model_instance = SentenceTransformer("all-MiniLM-L6-v2")
+    return _model_instance
+
 class EmbeddingModel:
     def __init__(self):
-        print("Loading FREE local embedding model...")
-        self.model = SentenceTransformer("all-MiniLM-L6-v2")
+        self.model = get_model()
         self.dimension = 384
         print(f"Dimension size: {self.dimension}")
 

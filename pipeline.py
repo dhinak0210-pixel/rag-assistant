@@ -32,7 +32,7 @@ def run_pipeline(folder_path="data/documents"):
     
     stats = vs.get_stats()
     print("\n✅ PIPELINE COMPLETE!")
-    print(f"Total Chunks in DB: {stats.get('total_chunks', 0)}")
+    print(f"Total Chunks in DB: {stats.get('total', 0)}")
 
 def run_evaluation():
     """Runs evaluation with sample questions."""

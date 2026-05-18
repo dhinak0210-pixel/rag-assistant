@@ -2,6 +2,7 @@ import os
 import time
 from groq import Groq
 from .vectorstore import VectorStore
+from .retriever import HybridRetriever
 
 class RAGChain:
     def __init__(self):
@@ -9,12 +10,13 @@ class RAGChain:
         if not api_key:
             print("Warning: GROQ_API_KEY not found in environment!")
         self.client = Groq(api_key=api_key)
-        self.model = "llama-3.1-70b-versatile"
+        self.model = os.environ.get("LLM_MODEL", "llama-3.3-70b-versatile")
         self.vector_store = VectorStore()
+        self.retriever = HybridRetriever()
         self.history = []
         self.temperature = 0.1
         self.max_tokens = 1024
-        print("RAG Chain Ready! (FREE Groq)")
+        print(f"RAG Chain Ready! (Using model: {self.model})")
 
     def _build_context(self, results):
         parts = []
@@ -37,12 +39,12 @@ class RAGChain:
         prompt += f"Question: {question}\nAnswer:"
         return prompt
 
-    def ask(self, question: str):
+    def ask(self, question: str, top_k=5):
         start_time = time.time()
         if len(question) < 3:
             return {"answer": "Question too short.", "sources": []}
             
-        results = self.vector_store.search(question, top_k=5)
+        results = self.retriever.retrieve(question, top_k=top_k)
         if not results:
             return {
                 "answer": "I dont have this information in the documents.",
@@ -93,12 +95,12 @@ class RAGChain:
                 err = f"Error: {e}"
             return {"answer": err, "sources": []}
 
-    def ask_stream(self, question: str):
+    def ask_stream(self, question: str, top_k=5):
         if len(question) < 3:
             yield "Question too short."
             return
             
-        results = self.vector_store.search(question, top_k=5)
+        results = self.retriever.retrieve(question, top_k=top_k)
         if not results:
             yield "I dont have this information in the documents."
             return
