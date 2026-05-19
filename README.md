@@ -14,7 +14,7 @@ license: mit
 > Chat with your documents using AI - 100% FREE!
 
 ## 🌐 Live Demo
-[Click here to try it!](https://huggingface.co/spaces/USERNAME/rag-assistant)
+[Click here to try it!](https://huggingface.co/spaces/Dhina421372/rag-assistant)
 
 ## ✨ Features
 - Upload PDF/TXT documents
