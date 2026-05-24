@@ -6,9 +6,24 @@ class VectorStore:
     def __init__(self, path="./chroma_db"):
         os.makedirs(path, exist_ok=True)
         self.client = chromadb.PersistentClient(path=path)
-        self.collection = self.client.get_or_create_collection(name="rag_docs")
+        self._init_collection()
         self.embedding_model = EmbeddingModel()
         print(f"Storage location: {path}")
+
+    def _init_collection(self):
+        """Initializes the collection and ensures it is healthy and not missing index files."""
+        try:
+            self.collection = self.client.get_or_create_collection(name="rag_docs")
+            # Verify collection is healthy on disk by calling count()
+            self.collection.count()
+        except Exception as e:
+            print(f"Warning: Collection index is corrupted or missing: {e}")
+            print("Recreating collection 'rag_docs' to restore consistency...")
+            try:
+                self.client.delete_collection("rag_docs")
+            except Exception as delete_err:
+                print(f"Could not delete collection: {delete_err}")
+            self.collection = self.client.get_or_create_collection(name="rag_docs")
 
     def store(self, chunks: list):
         self.clear()
@@ -47,7 +62,16 @@ class VectorStore:
         return total_stored
 
     def search(self, query: str, top_k=5):
-        if self.collection.count() == 0:
+        # Self-heal if count fails due to a missing/corrupted collection index
+        try:
+            count = self.collection.count()
+        except Exception as e:
+            print(f"Search failed because collection count raised an error: {e}")
+            print("Self-healing: Reinitializing the collection...")
+            self._init_collection()
+            count = self.collection.count()
+
+        if count == 0:
             return []
             
         q_emb = self.embedding_model.embed_query(query).tolist()
@@ -71,15 +95,21 @@ class VectorStore:
         return formatted_results
 
     def get_stats(self):
-        count = self.collection.count()
+        try:
+            count = self.collection.count()
+        except Exception as e:
+            print(f"get_stats failed: {e}. Reinitializing...")
+            self._init_collection()
+            count = self.collection.count()
         return {"total": count, "ready": count > 0}
 
     def clear(self):
         try:
             self.client.delete_collection("rag_docs")
-            self.collection = self.client.create_collection("rag_docs")
-        except:
-            pass
+            self.collection = self.client.get_or_create_collection(name="rag_docs")
+        except Exception as e:
+            print(f"Error clearing collection: {e}")
+            self.collection = self.client.get_or_create_collection(name="rag_docs")
 
 _vector_store = None
 
@@ -102,7 +132,13 @@ def get_stats():
     return get_vector_store().get_stats()
 
 def get_chroma_client():
-    return get_vector_store().collection
+    vs_instance = get_vector_store()
+    try:
+        vs_instance.collection.count()
+    except Exception as e:
+        print(f"get_chroma_client caught error: {e}. Reinitializing...")
+        vs_instance._init_collection()
+    return vs_instance.collection
 
 if __name__ == "__main__":
     vs = VectorStore()
