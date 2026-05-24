@@ -39,7 +39,7 @@ class RAGChain:
         prompt += f"Question: {question}\nAnswer:"
         return prompt
 
-    def ask(self, question: str, top_k=5):
+    def ask(self, question: str, top_k=5, history=None):
         start_time = time.time()
         if len(question) < 3:
             return {"answer": "Question too short.", "sources": []}
@@ -59,8 +59,9 @@ class RAGChain:
         
         messages = [{"role": "system", "content": self._system_prompt()}]
         
-        for msg in self.history[-6:]:
-            messages.append(msg)
+        chat_history = history if history is not None else self.history
+        for msg in chat_history[-6:]:
+            messages.append({"role": msg["role"], "content": msg["content"]})
             
         messages.append({"role": "user", "content": prompt})
         
@@ -73,10 +74,11 @@ class RAGChain:
             )
             answer = response.choices[0].message.content
             
-            self.history.append({"role": "user", "content": question})
-            self.history.append({"role": "assistant", "content": answer})
-            if len(self.history) > 6:
-                self.history = self.history[-6:]
+            if history is None:
+                self.history.append({"role": "user", "content": question})
+                self.history.append({"role": "assistant", "content": answer})
+                if len(self.history) > 6:
+                    self.history = self.history[-6:]
                 
             latency = time.time() - start_time
             return {
@@ -95,7 +97,7 @@ class RAGChain:
                 err = f"Error: {e}"
             return {"answer": err, "sources": []}
 
-    def ask_stream(self, question: str, top_k=5):
+    def ask_stream(self, question: str, top_k=5, history=None):
         if len(question) < 3:
             yield "Question too short."
             return
@@ -109,8 +111,11 @@ class RAGChain:
         prompt = self._build_prompt(question, context)
         
         messages = [{"role": "system", "content": self._system_prompt()}]
-        for msg in self.history[-6:]:
-            messages.append(msg)
+        
+        chat_history = history if history is not None else self.history
+        for msg in chat_history[-6:]:
+            messages.append({"role": msg["role"], "content": msg["content"]})
+            
         messages.append({"role": "user", "content": prompt})
         
         full_answer = ""
@@ -128,10 +133,11 @@ class RAGChain:
                     full_answer += token
                     yield token
                     
-            self.history.append({"role": "user", "content": question})
-            self.history.append({"role": "assistant", "content": full_answer})
-            if len(self.history) > 6:
-                self.history = self.history[-6:]
+            if history is None:
+                self.history.append({"role": "user", "content": question})
+                self.history.append({"role": "assistant", "content": full_answer})
+                if len(self.history) > 6:
+                    self.history = self.history[-6:]
                 
         except Exception as e:
             if "RateLimit" in str(e) or "429" in str(e):

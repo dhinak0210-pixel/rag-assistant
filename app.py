@@ -217,7 +217,7 @@ if prompt := st.chat_input("Ask anything..."):
             
         full_response = ""
         start_time = time.time()
-        for token in rag.ask_stream(prompt, top_k=top_k):
+        for token in rag.ask_stream(prompt, top_k=top_k, history=st.session_state.messages[:-1]):
             full_response += token
             placeholder.markdown(full_response + "▌")
             
