@@ -1,0 +1,8 @@
+[server]
+headless = true
+fileWatcherType = "none"
+enableXsrfProtection = false
+maxUploadSize = 400
+
+[browser]
+gatherUsageStats = false
