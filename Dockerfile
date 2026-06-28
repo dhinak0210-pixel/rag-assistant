@@ -13,7 +13,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN mkdir -p data/documents chroma_db
+RUN mkdir -p documents chroma_db
 
 EXPOSE 7860
 
